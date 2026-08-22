@@ -22,19 +22,46 @@ mkdir -p "$BUILD_DIR/share/icons/hicolor/256x256/apps"
 mkdir -p "$BUILD_DIR/share/zed"
 
 # Find and copy the built binary
-BINARY_PATH="target/$TARGET/release/zed"
-if [ ! -f "$BINARY_PATH" ]; then
-    BINARY_PATH="target/$TARGET/debug/zed"
+echo "Searching for built binary..."
+find target/$TARGET -name "zed" -type f 2>/dev/null || true
+find target/$TARGET -name "zed" -type l 2>/dev/null || true
+
+BINARY_PATH=""
+for candidate in \
+    "target/$TARGET/release/zed" \
+    "target/$TARGET/debug/zed" \
+    "target/$TARGET/release/zed-android" \
+    "target/$TARGET/release/libzed.so" \
+    "target/$TARGET/release/libzed.so.*"; do
+    if [ -f "$candidate" ] && file "$candidate" | grep -q "ELF"; then
+        BINARY_PATH="$candidate"
+        break
+    fi
+done
+
+# Broader search
+if [ -z "$BINARY_PATH" ]; then
+    BINARY_PATH=$(find target/$TARGET -name "zed*" -type f -executable 2>/dev/null | head -1)
 fi
 
-if [ -f "$BINARY_PATH" ]; then
-    cp "$BINARY_PATH" "$BUILD_DIR/bin/zed"
-    chmod 755 "$BUILD_DIR/bin/zed"
-    echo "Copied binary: $(file "$BUILD_DIR/bin/zed")"
+if [ -z "$BINARY_PATH" ]; then
+    BINARY_PATH=$(find target/$TARGET -name "libzed.so" -type f 2>/dev/null | head -1)
+fi
+
+if [ -n "$BINARY_PATH" ] && [ -f "$BINARY_PATH" ]; then
+    if [[ "$BINARY_PATH" == *.so* ]]; then
+        cp "$BINARY_PATH" "$BUILD_DIR/lib/"
+        chmod 755 "$BUILD_DIR/lib/$(basename $BINARY_PATH)"
+        echo "Copied shared library: $(file "$BINARY_PATH")"
+    else
+        cp "$BINARY_PATH" "$BUILD_DIR/bin/zed"
+        chmod 755 "$BUILD_DIR/bin/zed"
+        echo "Copied binary: $(file "$BUILD_DIR/bin/zed")"
+    fi
 else
-    echo "ERROR: Binary not found at $BINARY_PATH"
-    echo "Available binaries:"
-    find target/ -name "zed" -type f 2>/dev/null
+    echo "ERROR: Binary not found. Listing all artifacts:"
+    find target/$TARGET -type f -executable 2>/dev/null | head -20
+    find target/$TARGET -name "*.so" -type f 2>/dev/null | head -20
     exit 1
 fi
 

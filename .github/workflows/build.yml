@@ -94,6 +94,18 @@ jobs:
               exit 1
             }
 
+      - name: List build artifacts
+        working-directory: zed-src
+        run: |
+          echo "=== Build artifacts ==="
+          find target/${{ env.MUSL_TARGET }} -type f -executable 2>/dev/null | head -20
+          echo "=== Shared libraries ==="
+          find target/${{ env.MUSL_TARGET }} -name "*.so" -type f 2>/dev/null | head -20
+          echo "=== All files in release ==="
+          ls -la target/${{ env.MUSL_TARGET }}/release/ 2>/dev/null | head -20
+          echo "=== Zed crate output ==="
+          ls -la target/${{ env.MUSL_TARGET }}/release/zed* 2>/dev/null || echo "No zed* files"
+
       - name: Create Termux .deb package
         run: |
           cd zed-src
