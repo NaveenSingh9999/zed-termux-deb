@@ -21,31 +21,28 @@ mkdir -p "$BUILD_DIR/share/applications"
 mkdir -p "$BUILD_DIR/share/icons/hicolor/256x256/apps"
 mkdir -p "$BUILD_DIR/share/zed"
 
-# Find and copy the built binary
-echo "Searching for built binary..."
-find target/$TARGET -name "zed" -type f 2>/dev/null || true
-find target/$TARGET -name "zed" -type l 2>/dev/null || true
+# Find the built binary
+echo "Searching for built binary in target/$TARGET/release/..."
+ls -la "target/$TARGET/release/" 2>/dev/null | head -30
 
 BINARY_PATH=""
-for candidate in \
-    "target/$TARGET/release/zed" \
-    "target/$TARGET/debug/zed" \
-    "target/$TARGET/release/zed-android" \
-    "target/$TARGET/release/libzed.so" \
-    "target/$TARGET/release/libzed.so.*"; do
-    if [ -f "$candidate" ] && file "$candidate" | grep -q "ELF"; then
-        BINARY_PATH="$candidate"
+
+# Look for ELF executables in release dir
+for f in target/$TARGET/release/zed target/$TARGET/release/zed-*; do
+    if [ -f "$f" ] && file "$f" | grep -q "ELF"; then
+        BINARY_PATH="$f"
         break
     fi
 done
 
-# Broader search
+# Broader search for any zed-related ELF binary
 if [ -z "$BINARY_PATH" ]; then
-    BINARY_PATH=$(find target/$TARGET -name "zed*" -type f -executable 2>/dev/null | head -1)
+    BINARY_PATH=$(find target/$TARGET/release -maxdepth 1 -type f -exec sh -c 'file "$1" | grep -q "ELF" && echo "$1"' _ {} \; 2>/dev/null | grep -i zed | head -1)
 fi
 
+# Even broader: any ELF executable
 if [ -z "$BINARY_PATH" ]; then
-    BINARY_PATH=$(find target/$TARGET -name "libzed.so" -type f 2>/dev/null | head -1)
+    BINARY_PATH=$(find target/$TARGET/release -maxdepth 1 -type f -exec sh -c 'file "$1" | grep -q "ELF" && echo "$1"' _ {} \; 2>/dev/null | head -1)
 fi
 
 if [ -n "$BINARY_PATH" ] && [ -f "$BINARY_PATH" ]; then
@@ -59,9 +56,12 @@ if [ -n "$BINARY_PATH" ] && [ -f "$BINARY_PATH" ]; then
         echo "Copied binary: $(file "$BUILD_DIR/bin/zed")"
     fi
 else
-    echo "ERROR: Binary not found. Listing all artifacts:"
-    find target/$TARGET -type f -executable 2>/dev/null | head -20
-    find target/$TARGET -name "*.so" -type f 2>/dev/null | head -20
+    echo "ERROR: No ELF binary found in target/$TARGET/release/"
+    echo "Contents of release dir:"
+    ls -la target/$TARGET/release/ 2>/dev/null
+    echo ""
+    echo "All files in target/$TARGET:"
+    find target/$TARGET -maxdepth 2 -type f 2>/dev/null | head -30
     exit 1
 fi
 
@@ -77,11 +77,6 @@ if [ -d "assets" ]; then
     cp -r assets/* "$BUILD_DIR/share/zed/" 2>/dev/null || true
 fi
 
-# Copy themes
-if [ -d "assets/themes" ]; then
-    cp -r assets/themes "$BUILD_DIR/share/zed/" 2>/dev/null || true
-fi
-
 # Create .desktop file
 cat > "$BUILD_DIR/share/applications/dev.zed.Zed.desktop" << 'DESKTOP'
 [Desktop Entry]
@@ -93,9 +88,6 @@ Type=Application
 Categories=Development;TextEditor;
 MimeType=text/plain;inode/directory;
 DESKTOP
-
-# Create icon placeholder (4x4 PNG)
-echo "NOTE: Replace with actual Zed icon"
 
 # Calculate installed size
 INSTALLED_SIZE=$(du -sk "$BUILD_DIR" | cut -f1)
@@ -144,9 +136,3 @@ echo ""
 echo "To install on Termux:"
 echo "  dpkg -i $DEB_NAME"
 echo "  apt-get -f install"
-echo ""
-echo "To install via file transfer:"
-echo "  adb push $DEB_NAME /sdcard/"
-echo "  # Then in Termux:"
-echo "  cp /sdcard/$DEB_NAME ~/"
-echo "  dpkg -i ~/$DEB_NAME"
