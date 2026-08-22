@@ -13,7 +13,6 @@ on:
 env:
   CARGO_TERM: always
   MUSL_TARGET: aarch64-unknown-linux-musl
-  NDK_VERSION: "27.0.12077973"
 
 jobs:
   build:
@@ -39,9 +38,7 @@ jobs:
             libclang-dev libssl-dev pkg-config \
             autoconf automake libtool \
             python3 python3-pip \
-            openjdk-17-jdk-headless \
-            crossbuild-essential-arm64 \
-            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+            openjdk-17-jdk-headless
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
@@ -56,32 +53,18 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Install cargo-ndk and cargo-deb
-        run: |
-          cargo install cargo-ndk cargo-deb
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
 
-      - name: Set up musl cross-compiler
+      - name: Download pre-built musl cross-compiler
         run: |
-          MUSL_VERSION=1.1.24
-          MUSL_HASH=x86_64
-          wget -q "https://musl.libc.org/releases/musl-${MUSL_VERSION}.tar.gz"
-          tar xzf musl-${MUSL_VERSION}.tar.gz
-          cd musl-${MUSL_VERSION}
-          ./configure --prefix=/opt/musl-cross --host=aarch64-linux-gnu --target=aarch64-linux-musl \
-            CC=aarch64-linux-gnu-gcc AR=aarch64-linux-gnu-ar
-          make -j$(nproc)
-          sudo make install
-
-      - name: Build native deps for musl
-        run: |
-          sudo apt-get install -y \
-            libfontconfig-dev libfreetype-dev \
-            libwayland-dev libxkbcommon-dev \
-            libvulkan-dev vulkan-validationlayers \
-            libgit2-dev libssl-dev \
-            libcurl4-openssl-dev \
-            libsqlite3-dev \
-            libasound2-dev libpulse-dev
+          wget -q "https://musl.cc/aarch64-linux-musl-cross.tgz" -O musl-cross.tgz
+          tar xzf musl-cross.tgz
+          echo "$(pwd)/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
+          echo "CC=aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc" >> $GITHUB_ENV
+          echo "CXX=aarch64-linux-musl-cross/bin/aarch64-linux-musl-g++" >> $GITHUB_ENV
+          echo "AR=aarch64-linux-musl-cross/bin/aarch64-linux-musl-ar" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc" >> $GITHUB_ENV
 
       - name: Clone Zed
         run: |
@@ -103,7 +86,7 @@ jobs:
           rustflags = ["-C", "symbol-mangling-version=v0", "--cfg", "tokio_unstable"]
 
           [target.aarch64-unknown-linux-musl]
-          linker = "aarch64-linux-gnu-gcc"
+          linker = "aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc"
           rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=-static"]
           CARGO_EOF
 
@@ -119,14 +102,6 @@ jobs:
               grep -i "error\|SIGSEGV\|cranelift" build.log | tail -20
               exit 1
             }
-
-      - name: Build zd-exec helper
-        working-directory: zed-src
-        run: |
-          cargo build \
-            --release \
-            --target ${{ env.MUSL_TARGET }} \
-            -p zdroid_runtime --bin zd-exec 2>/dev/null || true
 
       - name: Create Termux .deb package
         run: |
