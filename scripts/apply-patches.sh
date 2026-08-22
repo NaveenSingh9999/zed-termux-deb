@@ -43,10 +43,11 @@ if [ -f "crates/paths/src/home_dir.rs" ]; then
     echo "  -> Patched home directory for Termux"
 fi
 
-# 5. Force rust-embed for static assets
+# 5. Force rust-embed for static assets (handle all variants)
 echo "[5/6] Patching rust-embed for static embedding..."
 find . -name "Cargo.toml" -exec grep -l "rust-embed" {} \; | head -5 | while read f; do
-    sed -i 's/rust-embed = { version = "[^"]*"/rust-embed = { version = "8.11", features = ["debug-embed", "include-exclude"]/g' "$f" 2>/dev/null || true
+    # Replace any rust-embed line with a clean version
+    sed -i 's/rust-embed = { version = "[^"]*"[^}]*}/rust-embed = { version = "8.11", features = ["debug-embed", "include-exclude"] }/g' "$f" 2>/dev/null || true
 done
 echo "  -> Patched rust-embed features"
 
